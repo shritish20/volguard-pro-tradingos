@@ -1,199 +1,341 @@
-import { MainLayout } from "@/components/layout/MainLayout";
-import { Card } from "@/components/ui/card";
-import { mockDashboardData } from "@/lib/mockData";
-import { Calendar, AlertTriangle, TrendingUp, Clock, Globe } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useState, useEffect } from "react";
+import { volGuardAPI } from "@/services/api";
+import { DashboardData, EconomicEvent } from "@/types/volguard";
+import MainLayout from "@/components/layout/MainLayout";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, AlertTriangle, Calendar, TrendingUp, Globe, Clock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const EventIntelligence = () => {
-  const data = mockDashboardData;
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filterImpact, setFilterImpact] = useState<string>("ALL");
 
-  // Extended mock events for the calendar view
-  const allEvents = [
-    { event: "RBI MPC Meeting", date: "2024-02-08", impact: "HIGH" as const, type: "monetary" },
-    { event: "US CPI Release", date: "2024-02-13", impact: "MEDIUM" as const, type: "economic" },
-    { event: "India Budget Session", date: "2024-02-15", impact: "HIGH" as const, type: "fiscal" },
-    { event: "Fed Minutes", date: "2024-02-21", impact: "MEDIUM" as const, type: "monetary" },
-    { event: "India GDP Q3", date: "2024-02-28", impact: "MEDIUM" as const, type: "economic" },
-    { event: "Bank Holiday - Mahashivratri", date: "2024-03-08", impact: "LOW" as const, type: "holiday" },
-  ];
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const dashboardData = await volGuardAPI.getDashboard();
+        setData(dashboardData);
+      } catch (err: any) {
+        console.error("Failed to fetch event data:", err);
+        setError(err.message || "Failed to load event data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    
+    // Refresh every 60 seconds
+    const interval = setInterval(fetchData, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+            <p className="text-lg text-muted-foreground">Loading Event Intelligence...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <MainLayout>
+        <Alert variant="destructive" className="m-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            {error}. Please ensure the backend is running on http://localhost:8000
+          </AlertDescription>
+        </Alert>
+      </MainLayout>
+    );
+  }
+
+  if (!data) {
+    return (
+      <MainLayout>
+        <div className="p-10 text-center">
+          <p className="text-muted-foreground">No event data available</p>
+        </div>
+      </MainLayout>
+    );
+  }
 
   const getImpactColor = (impact: string) => {
     switch (impact) {
-      case "HIGH":
-        return "bg-destructive/20 text-destructive border-destructive/30";
-      case "MEDIUM":
-        return "bg-warning/20 text-warning border-warning/30";
-      case "LOW":
-        return "bg-muted text-muted-foreground border-muted";
+      case 'HIGH':
+        return 'bg-red-500/20 text-red-500 border-red-500/30';
+      case 'MEDIUM':
+        return 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30';
+      case 'LOW':
+        return 'bg-blue-500/20 text-blue-500 border-blue-500/30';
       default:
-        return "bg-muted text-muted-foreground";
+        return 'bg-gray-500/20 text-gray-500 border-gray-500/30';
     }
   };
 
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case "monetary":
-        return <TrendingUp className="h-4 w-4" />;
-      case "economic":
-        return <Globe className="h-4 w-4" />;
-      case "fiscal":
-        return <Calendar className="h-4 w-4" />;
-      default:
-        return <Clock className="h-4 w-4" />;
-    }
+  const getUrgencyLevel = (daysUntil: number) => {
+    if (daysUntil <= 1) return { level: 'IMMEDIATE', color: 'text-red-500' };
+    if (daysUntil <= 3) return { level: 'URGENT', color: 'text-orange-500' };
+    if (daysUntil <= 7) return { level: 'SOON', color: 'text-yellow-500' };
+    return { level: 'SCHEDULED', color: 'text-blue-500' };
   };
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-IN", {
-      weekday: "short",
-      day: "2-digit",
-      month: "short",
-    });
-  };
+  const filteredEvents = filterImpact === "ALL" 
+    ? data.economic_events 
+    : data.economic_events.filter(e => e.impact_level === filterImpact);
 
-  const getDaysUntil = (dateStr: string) => {
-    const eventDate = new Date(dateStr);
-    const today = new Date();
-    const diff = Math.ceil((eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    return diff;
-  };
+  const sortedEvents = [...filteredEvents].sort((a, b) => a.days_until - b.days_until);
+
+  const highImpactCount = data.economic_events.filter(e => e.impact_level === 'HIGH').length;
+  const mediumImpactCount = data.economic_events.filter(e => e.impact_level === 'MEDIUM').length;
+  const vetoCount = data.external_metrics.veto_events.length;
 
   return (
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Event Intelligence</h1>
-          <p className="text-sm text-muted-foreground">
-            Economic calendar and veto event tracking
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Event Intelligence</h1>
+            <p className="text-muted-foreground">Economic events and market-moving catalysts</p>
+          </div>
+          <Badge variant="outline" className="text-lg px-4 py-2">
+            <Calendar className="h-4 w-4 mr-2" />
+            {data.economic_events.length} Events
+          </Badge>
         </div>
 
-        {/* Veto Events Section */}
-        {data.external_metrics.veto_events.some((e) => e.impact === "HIGH") && (
-          <Card className="border-destructive/30 bg-destructive/5 p-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-destructive/20">
-                <AlertTriangle className="h-6 w-6 text-destructive" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-destructive">Active Veto Events</h3>
-                <p className="text-sm text-muted-foreground">
-                  High-impact events requiring position management
+        {/* Veto Alert */}
+        {data.external_metrics.veto_square_off_needed && (
+          <Alert variant="destructive" className="border-2">
+            <AlertTriangle className="h-5 w-5" />
+            <div className="ml-2">
+              <h3 className="font-bold text-lg">VETO ALERT: Square-Off Required</h3>
+              <AlertDescription className="mt-2">
+                <p className="font-medium">
+                  {vetoCount} critical event(s) detected. Square off time: {data.external_metrics.veto_square_off_time || 'Immediate'}
                 </p>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {data.external_metrics.veto_events
-                .filter((e) => e.impact === "HIGH")
-                .map((event, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between rounded-lg border border-destructive/30 bg-card/50 p-4"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="text-center">
-                        <p className="font-mono text-2xl font-bold text-destructive">
-                          {getDaysUntil(event.date)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">days</p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-foreground">{event.event}</p>
-                        <p className="text-sm text-muted-foreground">{formatDate(event.date)}</p>
-                      </div>
+                <div className="mt-3 space-y-1">
+                  {data.external_metrics.veto_events.map((event, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Badge variant="destructive">{event.impact_level}</Badge>
+                      <span className="text-sm">{event.title} - {event.event_date}</span>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Auto square-off</p>
-                      <p className="font-mono text-sm font-medium text-destructive">T-1 @ 15:00 IST</p>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </AlertDescription>
             </div>
-          </Card>
+          </Alert>
         )}
 
-        {/* Economic Calendar */}
-        <Card className="border-border bg-card p-6">
-          <h3 className="mb-4 text-lg font-semibold">Economic Calendar</h3>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Events</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{data.economic_events.length}</div>
+              <p className="text-xs text-muted-foreground mt-1">Tracked catalysts</p>
+            </CardContent>
+          </Card>
 
-          <div className="space-y-3">
-            {allEvents.map((event, index) => {
-              const daysUntil = getDaysUntil(event.date);
-              const isPast = daysUntil < 0;
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">High Impact</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-red-500">{highImpactCount}</div>
+              <p className="text-xs text-muted-foreground mt-1">Critical events</p>
+            </CardContent>
+          </Card>
 
-              return (
-                <div
-                  key={index}
-                  className={cn(
-                    "flex items-center justify-between rounded-lg border p-4 transition-colors",
-                    isPast ? "border-muted/50 bg-muted/20 opacity-50" : "border-border bg-secondary/20 hover:bg-secondary/40"
-                  )}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Medium Impact</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-yellow-500">{mediumImpactCount}</div>
+              <p className="text-xs text-muted-foreground mt-1">Important events</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Veto Events</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-destructive">{vetoCount}</div>
+              <p className="text-xs text-muted-foreground mt-1">Requires action</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* External Metrics */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              External Flow Metrics
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <p className="text-sm text-muted-foreground">FII Net Change</p>
+                <p className={`text-2xl font-bold ${data.external_metrics.fii_net_change > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {data.external_metrics.fii_net_change > 0 ? '+' : ''}₹{(data.external_metrics.fii_net_change / 100).toFixed(2)}Cr
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">FII Direction</p>
+                <Badge className="mt-1 text-lg" variant={data.external_metrics.fii_direction === 'BUYING' ? 'default' : 'destructive'}>
+                  {data.external_metrics.fii_direction}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Veto Status</p>
+                <Badge 
+                  className="mt-1 text-lg" 
+                  variant={data.external_metrics.veto_square_off_needed ? 'destructive' : 'default'}
                 >
-                  <div className="flex items-center gap-4">
-                    {/* Date Badge */}
-                    <div className="flex h-14 w-14 flex-col items-center justify-center rounded-lg bg-secondary">
-                      <span className="text-xs uppercase text-muted-foreground">
-                        {new Date(event.date).toLocaleDateString("en-US", { month: "short" })}
-                      </span>
-                      <span className="font-mono text-xl font-bold text-foreground">
-                        {new Date(event.date).getDate()}
-                      </span>
-                    </div>
-
-                    {/* Event Info */}
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className={cn(
-                          "flex h-6 w-6 items-center justify-center rounded",
-                          getImpactColor(event.impact)
-                        )}>
-                          {getTypeIcon(event.type)}
-                        </span>
-                        <p className="font-semibold text-foreground">{event.event}</p>
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {formatDate(event.date)} • {event.type.charAt(0).toUpperCase() + event.type.slice(1)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Impact & Days */}
-                  <div className="flex items-center gap-4">
-                    <span
-                      className={cn(
-                        "rounded-full border px-3 py-1 text-xs font-medium",
-                        getImpactColor(event.impact)
-                      )}
-                    >
-                      {event.impact} IMPACT
-                    </span>
-                    {!isPast && (
-                      <div className="text-right">
-                        <p className="font-mono text-lg font-bold text-foreground">{daysUntil}</p>
-                        <p className="text-xs text-muted-foreground">days</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  {data.external_metrics.veto_square_off_needed ? 'ACTIVE' : 'CLEAR'}
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
         </Card>
 
-        {/* Impact Simulator Placeholder */}
-        <Card className="border-border bg-card p-6">
-          <h3 className="mb-4 text-lg font-semibold">Impact Simulator</h3>
-          <div className="flex h-48 items-center justify-center rounded-xl border border-dashed border-border bg-secondary/20">
-            <div className="text-center text-muted-foreground">
-              <TrendingUp className="mx-auto mb-3 h-10 w-10" />
-              <p className="font-medium">Scenario Analysis</p>
-              <p className="text-sm">"What if RBI hikes 25bps?" simulations</p>
-              <p className="mt-2 text-xs">Coming soon</p>
+        {/* Event Filter Tabs */}
+        <Tabs value={filterImpact} onValueChange={setFilterImpact}>
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="ALL">All Events ({data.economic_events.length})</TabsTrigger>
+            <TabsTrigger value="HIGH">High ({highImpactCount})</TabsTrigger>
+            <TabsTrigger value="MEDIUM">Medium ({mediumImpactCount})</TabsTrigger>
+            <TabsTrigger value="LOW">Low ({data.economic_events.length - highImpactCount - mediumImpactCount})</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value={filterImpact} className="mt-6">
+            {sortedEvents.length === 0 ? (
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No events in this category</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {sortedEvents.map((event, idx) => {
+                  const urgency = getUrgencyLevel(event.days_until);
+                  
+                  return (
+                    <Card key={idx} className="hover:shadow-lg transition-shadow">
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <Badge className={`${getImpactColor(event.impact_level)} border px-3 py-1`}>
+                                {event.impact_level}
+                              </Badge>
+                              <Badge variant="outline" className="flex items-center gap-1">
+                                <Globe className="h-3 w-3" />
+                                {event.country}
+                              </Badge>
+                              <Badge variant="outline" className={`flex items-center gap-1 ${urgency.color}`}>
+                                <Clock className="h-3 w-3" />
+                                {urgency.level}
+                              </Badge>
+                            </div>
+                            
+                            <h3 className="text-xl font-bold mb-2">{event.title}</h3>
+                            
+                            <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                              <div className="flex items-center gap-2">
+                                <Calendar className="h-4 w-4" />
+                                <span>{event.event_date}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                <span className="font-medium">
+                                  {event.days_until === 0 ? 'Today' : 
+                                   event.days_until === 1 ? 'Tomorrow' : 
+                                   `${event.days_until} days away`}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="text-right">
+                            <div className={`text-4xl font-bold ${urgency.color}`}>
+                              {event.days_until}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              days
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* Timeline View */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Event Timeline (Next 7 Days)</CardTitle>
+            <CardDescription>Chronological view of upcoming events</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {Array.from({ length: 8 }, (_, i) => i).map(day => {
+                const dayEvents = sortedEvents.filter(e => e.days_until === day);
+                const dateLabel = day === 0 ? 'Today' : day === 1 ? 'Tomorrow' : `Day +${day}`;
+                
+                return (
+                  <div key={day} className="flex gap-4">
+                    <div className="w-24 flex-shrink-0">
+                      <Badge variant="outline" className="w-full justify-center">
+                        {dateLabel}
+                      </Badge>
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      {dayEvents.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No events</p>
+                      ) : (
+                        dayEvents.map((event, idx) => (
+                          <div key={idx} className="flex items-center gap-2 p-2 bg-muted/50 rounded">
+                            <Badge className={`${getImpactColor(event.impact_level)} text-xs`}>
+                              {event.impact_level}
+                            </Badge>
+                            <span className="text-sm font-medium">{event.title}</span>
+                            <Badge variant="outline" className="text-xs ml-auto">
+                              {event.country}
+                            </Badge>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
+          </CardContent>
         </Card>
       </div>
     </MainLayout>
