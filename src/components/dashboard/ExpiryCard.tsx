@@ -1,34 +1,18 @@
 import { cn } from "@/lib/utils";
 import { ScoreGauge } from "./ScoreGauge";
-import { Calendar, TrendingUp, Percent, Target } from "lucide-react";
-import type { ScoreBreakdown, Mandate } from "@/lib/mockData";
-import { formatIndianCurrency } from "@/lib/mockData";
+import { Calendar } from "lucide-react";
+// FIX: Import from real types, NOT mockData
+import { RegimeScore, TradingMandate } from "@/types/volguard";
 
 interface ExpiryCardProps {
-  type: "weekly" | "monthly" | "next_weekly";
-  expiry: string;
-  dte: number;
-  score: ScoreBreakdown;
-  mandate: Mandate;
-  isRecommended?: boolean;
+  type: "WEEKLY" | "MONTHLY" | "NEXT WEEKLY"; // Updated to match API
+  date: string;
+  score: RegimeScore;
+  mandate: TradingMandate;
   onClick?: () => void;
 }
 
-const typeLabels = {
-  weekly: "Weekly",
-  monthly: "Monthly",
-  next_weekly: "Next Weekly",
-};
-
-export function ExpiryCard({
-  type,
-  expiry,
-  dte,
-  score,
-  mandate,
-  isRecommended = false,
-  onClick,
-}: ExpiryCardProps) {
+export default function ExpiryCard({ type, date, score, mandate, onClick }: ExpiryCardProps) {
   const getStatusIcon = () => {
     if (!mandate.is_trade_allowed) return "🚫";
     if (score.composite >= 7) return "✅";
@@ -37,86 +21,53 @@ export function ExpiryCard({
   };
 
   return (
-    <div
-      onClick={onClick}
+    <div 
+      onClick={onClick} 
       className={cn(
-        "regime-card group cursor-pointer hover:scale-[1.02] hover:border-primary/50",
-        isRecommended && "ring-2 ring-primary/50 glow-cyan"
+        "regime-card group cursor-pointer hover:scale-[1.02] transition-all border rounded-lg p-4 bg-card",
+        !mandate.is_trade_allowed ? "border-red-500/50 bg-red-500/5" : "border-border",
+        score.composite >= 7 && "ring-1 ring-primary/50"
       )}
     >
-      {/* Recommended Badge */}
-      {isRecommended && (
-        <div className="absolute -top-3 left-4 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">
-          RECOMMENDED
-        </div>
-      )}
-
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-foreground">{typeLabels[type]}</h3>
-          <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+          <h3 className="text-lg font-semibold text-foreground">{type}</h3>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Calendar className="h-4 w-4" />
-            <span>{expiry}</span>
-            <span className="rounded bg-secondary px-1.5 py-0.5 text-xs font-medium">
-              {dte} DTE
-            </span>
+            <span>{date}</span>
           </div>
         </div>
         <span className="text-2xl">{getStatusIcon()}</span>
       </div>
 
-      {/* Score */}
-      <div className="mt-4 flex justify-center">
+      {/* Score Gauge */}
+      <div className="flex justify-center my-4">
         <ScoreGauge score={score.composite} size="md" confidence={score.confidence} />
       </div>
 
-      {/* Score Breakdown */}
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        <div className="flex flex-col items-center rounded-lg bg-secondary/50 p-2">
-          <span className="text-xs text-muted-foreground">Vol</span>
-          <span className="font-mono text-sm font-medium">{score.vol_score.toFixed(1)}</span>
+      {/* Strategy Details */}
+      <div className="space-y-3 bg-secondary/30 p-3 rounded-md">
+        <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Strategy</span>
+            <span className="font-mono font-medium">{mandate.suggested_structure}</span>
         </div>
-        <div className="flex flex-col items-center rounded-lg bg-secondary/50 p-2">
-          <span className="text-xs text-muted-foreground">Struct</span>
-          <span className="font-mono text-sm font-medium">{score.struct_score.toFixed(1)}</span>
+        <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Allocation</span>
+            <span className="font-bold text-primary">{mandate.allocation_pct}%</span>
         </div>
-        <div className="flex flex-col items-center rounded-lg bg-secondary/50 p-2">
-          <span className="text-xs text-muted-foreground">Edge</span>
-          <span className="font-mono text-sm font-medium">{score.edge_score.toFixed(1)}</span>
+        <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Regime</span>
+            <span className="font-medium text-xs">{mandate.regime_name.replace(/_/g, " ")}</span>
         </div>
       </div>
 
-      {/* Mandate Summary */}
-      <div className="mt-4 space-y-2 border-t border-border pt-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Target className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Strategy</span>
-          </div>
-          <span className="font-mono text-sm font-medium text-foreground">
-            {mandate.suggested_structure.replace(/_/g, " ")}
-          </span>
+      {/* Veto Warning */}
+      {mandate.veto_reasons.length > 0 && (
+        <div className="mt-3 text-xs text-red-500 font-medium bg-red-500/10 p-2 rounded border border-red-500/20">
+            🚫 {mandate.veto_reasons[0]}
         </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Percent className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Allocation</span>
-          </div>
-          <span className="font-mono text-sm font-medium text-foreground">
-            {mandate.allocation_pct}%
-          </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Deploy</span>
-          </div>
-          <span className="font-mono text-sm font-medium text-primary">
-            {formatIndianCurrency(mandate.deployment_amount)}
-          </span>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
