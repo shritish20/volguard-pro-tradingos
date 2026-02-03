@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+﻿import { ReactNode } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { TopBar } from "./TopBar";
 
@@ -6,7 +6,7 @@ interface MainLayoutProps {
   children: ReactNode;
 }
 
-export function MainLayout({ children }: MainLayoutProps) {
+function MainLayout({ children }: MainLayoutProps) {
   return (
     <div className="min-h-screen bg-background">
       <AppSidebar />
@@ -19,3 +19,6 @@ export function MainLayout({ children }: MainLayoutProps) {
     </div>
   );
 }
+
+
+export default MainLayout;

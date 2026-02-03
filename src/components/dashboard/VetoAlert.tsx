@@ -1,4 +1,4 @@
-import { AlertTriangle, Clock, X } from "lucide-react";
+﻿import { AlertTriangle, Clock, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 
@@ -13,7 +13,7 @@ interface VetoAlertProps {
   onDismiss?: () => void;
 }
 
-export function VetoAlert({ events, onDismiss }: VetoAlertProps) {
+function VetoAlert({ events, onDismiss }: VetoAlertProps) {
   const [countdown, setCountdown] = useState("");
 
   const highImpactEvent = events.find((e) => e.impact === "HIGH");
@@ -129,3 +129,6 @@ export function VetoAlert({ events, onDismiss }: VetoAlertProps) {
     </div>
   );
 }
+
+
+export default VetoAlert;
